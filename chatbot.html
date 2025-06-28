@@ -1,0 +1,1466 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chatbot with Pretrained ML Model (TensorFlow.js)</title>
+    <style>
+        /* Reset and base */
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        
+        #chat-container {
+            width: 400px;
+            max-width: 90vw;
+            height: 600px;
+            background: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #chat-header {
+            background: linear-gradient(45deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            padding: 20px;
+            border-top-left-radius: 12px;
+            border-top-right-radius: 12px;
+            font-size: 1.5rem;
+            user-select: none;
+            text-align: center;
+        }
+        
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .message {
+            max-width: 75%;
+            padding: 10px 14px;
+            border-radius: 20px;
+            font-size: 1rem;
+            line-height: 1.4;
+            word-wrap: break-word;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .message.user {
+            align-self: flex-end;
+            background: #2575fc;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.bot {
+            align-self: flex-start;
+            background: #e4e6eb;
+            color: #111;
+            border-bottom-left-radius: 4px;
+        }
+        
+        #chat-input-area {
+            padding: 15px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+        }
+        
+        #chat-input {
+            flex: 1;
+            padding: 12px 15px;
+            border-radius: 25px;
+            border: 1.5px solid #bbb;
+            font-size: 1rem;
+            outline-offset: 2px;
+            transition: border-color 0.2s ease;
+        }
+        
+        #chat-input:focus {
+            border-color: #2575fc;
+            outline: none;
+        }
+        
+        #send-btn {
+            background: #2575fc;
+            border: none;
+            color: white;
+            padding: 12px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 25px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.3s ease;
+        }
+        
+        #send-btn:disabled {
+            background: #9bbcff;
+            cursor: not-allowed;
+        }
+        
+        #send-btn:hover:not(:disabled) {
+            background: #1959d4;
+        }
+        
+        #loading {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 8px;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="chat-container" role="main" aria-label="Chatbot window">
+        <div id="chat-header">Pavan's Chatbot 🤖</div>
+        <div id="chat-messages" aria-live="polite" aria-atomic="false"></div>
+        <div id="loading" aria-live="polite" aria-atomic="true" hidden>Loading ML model...</div>
+        <form id="chat-input-area" aria-label="Send message form">
+            <input id="chat-input" type="text" placeholder="Type a message..." aria-label="Message input" autocomplete="off" required />
+            <button id="send-btn" type="submit" aria-label="Send message">Send</button>
+        </form>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder@1.3.3/dist/universal-sentence-encoder.min.js"></script>
+    <script>
+        (() => {
+            const messagesDiv = document.getElementById('chat-messages');
+            const inputForm = document.getElementById('chat-input-area');
+            const inputField = document.getElementById('chat-input');
+            const sendBtn = document.getElementById('send-btn');
+            const loadingText = document.getElementById('loading');
+            let model;
+            let embeddings = null;
+
+            // Predefined conversation pairs (user message : bot response)
+            const conversationPairs = [{
+                    user: "hi",
+                    bot: "Hello! How can I help you today?"
+                }, {
+                    user: "hello",
+                    bot: "Hi there! Feel free to ask me anything."
+                }, {
+                    user: "how are you",
+                    bot: "I'm a bot, so I am always functioning perfectly!"
+                }, {
+                    user: "what is your name",
+                    bot: "I'm called Pavan's Chatbot 🤖."
+                }, {
+                    user: "help",
+                    bot: "Sure! Ask me anything or tell me what you'd like to know."
+                }, {
+                    user: "thank you",
+                    bot: "You're welcome! Happy to help."
+                }, {
+                    user: "bye",
+                    bot: "Goodbye! Have a great day!"
+                }, {
+                    user: "what can you do",
+                    bot: "I can answer simple questions and chat with you."
+                }, {
+                    user: "Good Morning",
+                    bot: "JAY MATA DI."
+                }, {
+                    user: "hi",
+                    bot: "Always say JAY MATA DI according to Pavan"
+                }, {
+                    user: "hello",
+                    bot: "Radhe Radhe."
+                }, {
+                    user: "how are you",
+                    bot: "I'm a bot, so I am always functioning perfectly!"
+                }, {
+                    user: "what is your name",
+                    bot: "I'm called Pavan' Chatbot 🤖."
+                }, {
+                    user: "help",
+                    bot: "Sure! Ask me anything or tell me what you'd like to know."
+                }, {
+                    user: "thank you",
+                    bot: "You're welcome! Happy to help."
+                }, {
+                    user: "bye",
+                    bot: "Goodbye! Have a great day!"
+                }, {
+                    user: "what can you do",
+                    bot: "I can answer simple questions and chat with you."
+                }, {
+                    user: "Good Morning",
+                    bot: "JAY MATA DI."
+                }, {
+                    user: "Good Night",
+                    bot: "JAY MATA DI."
+                }, {
+                    user: "Good Afternoon",
+                    bot: "JAY MATA DI."
+                }, {
+                    user: "ankit",
+                    bot: "pavan ka dost ."
+                }, {
+                    user: "India",
+                    bot: "A Great Country"
+                }, {
+                    user: "Shubham",
+                    bot: "A name of indian boy"
+                }, {
+                    user: "Pavan Best Friend",
+                    bot: "His Maa."
+                }, {
+                    user: "Adina college",
+                    bot: "Wanna Take Adimission so contact ."
+                }, {
+                    user: "who is pavan",
+                    bot: "your true  friend and bhai"
+                }, {
+                    user: "where pavan live",
+                    bot: "currently in sagar but in future he would available only in Himachal."
+                }, {
+                    user: "MAA",
+                    bot: "World's most beautiful word"
+                }, {
+                    user: "Himachal",
+                    bot: "amazing place."
+                }, {
+                    user: "Pavan",
+                    bot: "Fighter Jet lover."
+                }, {
+                    user: "india",
+                    bot: "best country "
+                }, {
+                    user: "bhaiya",
+                    bot: "ha didi"
+                }, {
+                    user: "yea",
+                    bot: "you mean yes"
+                }, {
+                    user: "tell me a joke",
+                    bot: "pad lo kuch joke mat suno!"
+                }, {
+                    user: "tell me a joke",
+                    bot: "Why don't scientists trust atoms? Because they make up everything!"
+                }, {
+                    user: "What is your name?",
+                    bot: "I am a chatbot created to assist you with your queries"
+                }, {
+                    user: "How can I reset my password?",
+                    bot: "You can reset your password by clicking on the 'Forgot Password' link on the login page."
+                }, {
+                    user: "What are your hours of operation?",
+                    bot: "I am available 24/7 to assist you."
+                }, {
+                    user: "Can you help me with my order?",
+                    bot: "Sure! Please provide your order number and I'll assist you."
+                }, {
+                    user: "Where is my order ?",
+                    bot: "i do not know."
+                },
+
+                {
+                    user: "How do I contact customer support?",
+                    bot: "You can contact customer support via email or by calling our support number."
+                }, {
+                    user: "Do you have a mobile app ?",
+                    bot: "NO"
+
+                }, {
+                    user: "Can I change my shipping address?",
+                    bot: "Yes, you can change your shipping address before your order is shipped."
+                }, {
+                    "user": "What is the estimated delivery time?",
+                    "bot": "The estimated delivery time is usually 3-5 business days."
+                }, {
+                    user: "How do I create an account ? ",
+                    bot: "You can create an account by clicking on the 'Sign Up button and filling out the required information."
+                }, {
+                    user: "What should I do if forget my username ? ",
+                    bot: "You can recover your username by clicking on the 'Forgot Username'link."
+
+
+                }, {
+                    user: "What if I receive a damaged item?",
+                    bot: "If you receive a damaged item, please contact customer support for assistance."
+                }, {
+                    user: "What is the Pythagorean theorem?",
+                    bot: "It states that in a right triangle, the square of the hypotenuse equals the sum of the squares of the other two sides."
+                }, {
+                    user: "How does a computer's CPU work?",
+                    bot: "The CPU executes instructions from programs, performing arithmetic, logic, control, and input/output operations."
+                }, {
+                    user: "What is a variable in programming?",
+                    bot: "A variable stores data values that can be changed during program execution."
+                }, {
+                    user: "What is the lift in an aircraft?",
+                    bot: "Lift is the force that allows an airplane to rise off the ground, generated by pressure differences on the wings."
+                }, {
+                    user: "What is Newton's first law of motion?",
+                    bot: "An object at rest stays at rest and an object in motion stays in motion unless acted upon by a force."
+                }, {
+                    user: "What is a function in programming?",
+                    bot: "A function is a reusable block of code that performs a specific task and can return a value."
+                }, {
+                    user: "What is the formula for the area of a circle?",
+                    bot: "Area = π times the square of the radius (A = πr²)."
+                }, {
+                    user: "What is binary code?",
+                    bot: "Binary code represents data using two symbols, typically 0 and 1, used in computers."
+                }, {
+                    user: "What is the wingspan of a Boeing 747?",
+                    bot: "Approximately 64.4 meters (211 feet)."
+                }, {
+                    user: "What is photosynthesis?",
+                    bot: "A process by which plants convert sunlight, water, and carbon dioxide into oxygen and glucose."
+                }, {
+                    user: "What is an array?",
+                    bot: "An array is a collection of items stored at contiguous memory locations."
+                }, {
+                    user: "How does a jet engine work?",
+                    bot: "It sucks in air, compresses it, mixes it with fuel, ignites the mixture, and expels it to produce thrust."
+                }, {
+                    user: "What is Ohm's Law?",
+                    bot: "Voltage equals current times resistance (V = IR)."
+                }, {
+                    user: "What is Big O notation?",
+                    bot: "A way to describe the performance or complexity of an algorithm."
+                }, {
+                    user: "What does the autopilot in aircraft do?",
+                    bot: "It automatically controls the aircraft’s trajectory reducing pilot workload."
+                }, {
+                    user: "What is quantum computing?",
+                    bot: "A type of computing based on quantum mechanics using qubits for computation."
+                }, {
+                    user: "What is a loop in programming?",
+                    bot: "A loop repeats a set of instructions until a condition is met."
+                }, {
+                    user: "What is the height of the International Space Station’s orbit?",
+                    bot: "Approximately 408 kilometers (253 miles) above Earth."
+                }, {
+                    user: "What is gravitational force?",
+                    bot: "An attractive force that exists between any two masses."
+                }, {
+                    user: "What is the difference between a compiler and an interpreter?",
+                    bot: "A compiler translates code to machine language before running, an interpreter executes code line-by-line."
+                }, {
+                    user: "What are control surfaces on an airplane?",
+                    bot: "Movable parts like ailerons, elevators, and rudders that control aircraft attitude."
+                }, {
+                    user: "What is the formula for the volume of a cylinder?",
+                    bot: "Volume = π times radius squared times height (V = πr²h)."
+                }, {
+                    user: "What is recursion in programming?",
+                    bot: "When a function calls itself in order to solve a problem."
+                }, {
+                    user: "What is the cruising speed of a commercial airplane?",
+                    bot: "Around 800 to 900 kilometers per hour (500 to 560 mph)."
+                }, {
+                    user: "What is a data structure?",
+                    bot: "A particular way of organizing data in a computer."
+                }, {
+                    user: "What is Pascal’s Triangle?",
+                    bot: "A triangular array of binomial coefficients."
+                }, {
+                    user: "What causes an airplane to stall?",
+                    bot: "When the angle of attack is too high and the wing loses lift."
+                }, {
+                    user: "What is a pointer in programming?",
+                    bot: "A variable that stores the memory address of another variable."
+                }, {
+                    user: "What does LCD stand for in displays?",
+                    bot: "Liquid Crystal Display."
+                }, {
+                    user: "What is the function of ailerons?",
+                    bot: "They control the roll of an aircraft."
+                }, {
+                    user: "What is the difference between supervised and unsupervised learning?",
+                    bot: "Supervised uses labeled data; unsupervised finds patterns without labels."
+                }, {
+                    user: "What is Bernoulli's principle?",
+                    bot: "An increase in the speed of a fluid occurs simultaneously with a decrease in pressure."
+                }, {
+                    user: "What is an algorithm?",
+                    bot: "A step-by-step set of instructions to solve a problem."
+                }, {
+                    user: "What is the formula for the Fibonacci sequence?",
+                    bot: "Each number is the sum of the two preceding ones starting from 0 and 1."
+                }, {
+                    user: "How do flaps help an airplane?",
+                    bot: "They increase lift and drag to help during takeoff and landing."
+                }, {
+                    user: "What is machine learning?",
+                    bot: "A field of AI where computers learn from data to make predictions."
+                }, {
+                    user: "What is the derivative of sin(x)?",
+                    bot: "The derivative is cos(x)."
+                }, {
+                    user: "What is false about vacuum in aviation?",
+                    bot: "Vacuum instruments do not require electricity and rely on suction for operation."
+                }, {
+                    user: "What is the function of the rudder?",
+                    bot: "It controls the yaw of an aircraft."
+                }, {
+                    user: "What is a variable scope?",
+                    bot: "The region of a program where a variable is accessible."
+                }, {
+                    user: "What is Newton's law of universal gravitation?",
+                    bot: "Every two masses attract each other with a force proportional to the product of their masses and inversely proportional to the square of the distance."
+                }, {
+                    user: "What programming language is mostly used for iOS development?",
+                    bot: "Swift is primarily used for iOS apps."
+                }, {
+                    user: "What is the difference between RAM and ROM?",
+                    bot: "RAM is volatile memory used for temporary storage; ROM is permanent memory storing firmware."
+                }, {
+                    user: "What is the speed of sound at sea level?",
+                    bot: "Approximately 343 meters per second or 1235 km/h."
+                }, {
+                    user: "What is an IDE in programming?",
+                    bot: "An Integrated Development Environment combining code editor, debugger, and build tools."
+                }, {
+                    user: "What is the function of landing gear?",
+                    bot: "To support the aircraft during landing, takeoff, and on the ground."
+                }, {
+                    user: "What does DNS stand for in networking?",
+                    bot: "Domain Name System."
+                }, {
+                    user: "What is an API?",
+                    bot: "Application Programming Interface, a set of rules to interact with software."
+                }, {
+                    user: "Name the parts of an aircraft's engine.",
+                    bot: "Compressor, combustion chamber, turbine, and exhaust."
+                }, {
+                    user: "What is the port number for HTTP?",
+                    bot: "Port 80."
+                }, {
+                    user: "What is entropy in thermodynamics?",
+                    bot: "A measure of disorder or randomness in a system."
+                }, {
+                    user: "What is encapsulation in OOP?",
+                    bot: "Bundling data with methods that operate on it, restricting direct access."
+                }, {
+                    user: "What is the difference between static and dynamic typing?",
+                    bot: "Static typing means variable types are known at compile-time; dynamic means at run-time."
+                }, {
+                    user: "What is a black box in aviation?",
+                    bot: "It's a flight recorder for data and cockpit audio, used in investigations."
+                }, {
+                    user: "What is an Ethernet cable?",
+                    bot: "A cable used to connect devices in a wired local area network."
+                }, {
+                    user: "What is the main force keeping satellites in orbit?",
+                    bot: "Gravity."
+                }, {
+                    user: "What does GPU stand for?",
+                    bot: "Graphics Processing Unit."
+                }, {
+                    user: "What does a compass measure on an aircraft?",
+                    bot: "Its heading relative to magnetic north."
+                }, {
+                    user: "What is an SQL database?",
+                    bot: "A relational database using Structured Query Language."
+                }, {
+                    user: "What is an example of a programming paradigm?",
+                    bot: "Object-Oriented Programming."
+                }, {
+                    user: "What is the primary purpose of flaps on wings?",
+                    bot: "To increase lift during takeoff and increase drag during landing."
+                }, {
+                    user: "What is recursion?",
+                    bot: "A function calling itself to solve subproblems."
+                }, {
+                    user: "How many degrees are in a right angle?",
+                    bot: "90 degrees."
+                }, {
+                    user: "What is a proxy server?",
+                    bot: "An intermediary between a user's device and the internet to enhance security or performance."
+                }, {
+                    user: "What is the Euler's number?",
+                    bot: "Approximately 2.718, it is the base of the natural logarithm."
+                }, {
+                    user: "What is the main aerodynamic force opposing an aircraft’s motion?",
+                    bot: "Drag."
+                }, {
+                    user: "What is DNS spoofing?",
+                    bot: "A cyber attack redirecting traffic by altering DNS records."
+                }, {
+                    user: "What is the importance of the angle of attack in flight?",
+                    bot: "It affects the amount of lift generated by the wing."
+                }, {
+                    user: "What is polymorphism in programming?",
+                    bot: "The ability to process objects differently based on their data type or class."
+                }, {
+                    user: "What is the purpose of the empennage on an airplane?",
+                    bot: "It provides stability and control, comprising the tail assembly."
+                }, {
+                    user: "What does HTML stand for?",
+                    bot: "HyperText Markup Language."
+                }, {
+                    user: "What is the formula for kinetic energy?",
+                    bot: "KE = 0.5 × mass × velocity²."
+                }, {
+                    user: "What is the difference between IPv4 and IPv6?",
+                    bot: "IPv4 uses 32-bit addresses; IPv6 uses 128-bit addresses."
+                }, {
+                    user: "What is an object in programming?",
+                    bot: "An instance of a class containing data and behavior."
+                }, {
+                    user: "What is load factor in aviation?",
+                    bot: "The ratio of the lift of an aircraft to its weight."
+                }, {
+                    user: "What is the placebo effect?",
+                    bot: "The placebo effect is when a patient experiences a perceived improvement in their condition after receiving a treatment that has no therapeutic effect."
+                }, {
+                    user: "What country has the largest population?",
+                    bot: "China has the largest population, with over 1.4 billion people."
+                }, {
+                    user: "What is the most spoken language in the world?",
+                    bot: "Mandarin Chinese is the most spoken language in the world."
+                }, {
+                    user: "What is the capital of France?",
+                    bot: "The capital of France is Paris."
+                }, {
+                    user: "What is the longest river in the world?",
+                    bot: "The Nile River is often considered the longest river in the world."
+                }, {
+                    user: "What is the significance of the year 1776 in American history?",
+                    bot: "1776 is the year the Declaration of Independence was signed, marking the birth of the United States."
+                }, {
+                    user: "What is the world record for the longest time spent in space?",
+                    bot: "The world record for the longest time spent in space is held by Valeri Polyakov, who spent 437 days aboard the Mir space station."
+                }, {
+                    user: "What is the national animal of India?",
+                    bot: "The national animal of India is the Bengal tiger."
+                }, {
+                    user: "What is the psychological concept of cognitive dissonance?",
+                    bot: "Cognitive dissonance is the mental discomfort experienced when holding two or more contradictory beliefs or values."
+                }, {
+                    user: "What is the capital of Japan?",
+                    bot: "The capital of Japan is Tokyo."
+                }, {
+                    user: "What is the most widely spoken language in India?",
+                    bot: "Hindi is the most widely spoken language in India."
+                }, {
+                    user: "What is the tallest mountain in the world?",
+                    bot: "Mount Everest is the tallest mountain in the world, standing at 8,848 meters (29,029 feet)."
+                }, {
+                    user: "What is the significance of the year 1969 in space exploration?",
+                    bot: "In 1969, Apollo 11 became the first mission to land humans on the Moon."
+                }, {
+                    user: "What is the world record for the fastest land animal?",
+                    bot: "The cheetah holds the world record for the fastest land animal, reaching speeds up to 75 mph (120 km/h)."
+                }, {
+                    user: "What is the national flower of India?",
+                    bot: "The national flower of India is the lotus."
+                }, {
+                    user: "What is the psychological term for the tendency to attribute our successes to internal factors and failures to external factors?",
+                    bot: "This is known as the self-serving bias."
+                }, {
+                    user: "What country is known as the Land of the Rising Sun?",
+                    bot: "Japan is known as the Land of the Rising Sun."
+                }, {
+                    user: "What is the official language of Brazil?",
+                    bot: "The official language of Brazil is Portuguese."
+                }, {
+                    user: "What is the capital of Canada?",
+                    bot: "The capital of Canada is Ottawa."
+                }, {
+                    user: "What is the significance of the year 1989 in history?",
+                    bot: "1989 is known for the fall of the Berlin Wall, symbolizing the end of the Cold War."
+                }, {
+                    user: "What is the world record for the longest marathon?",
+                    bot: "The world record for the longest marathon is held by a runner who completed 262.195 kilometers (163.4 miles) in 2019."
+                }, {
+                    user: "What is the national sport of India?",
+                    bot: "Hockey is considered the national sport of India."
+                }, {
+                    user: "What is the psychological concept of Maslow's hierarchy of needs?",
+                    bot: "Maslow's hierarchy of needs is a theory in psychology that categorizes human needs into a five-tier model, from basic physiological needs to self-actualization."
+                }, {
+                    user: "What country has the most UNESCO World Heritage Sites?",
+                    bot: "Italy has the most UNESCO World Heritage Sites."
+                }, {
+                    user: "What is the most spoken language in the European Union?",
+                    bot: "English is the most spoken language in the European Union."
+                }, {
+                    user: "What is the capital of Australia?",
+                    bot: "The capital of Australia is Canberra."
+                }, {
+                    user: "What is the significance of the year 2001 in technology?",
+                    bot: "2001 is known for the launch of the first iPod by Apple, revolutionizing portable music."
+                }, {
+                    user: "What is the world record for the longest fingernails?",
+                    bot: "The world record for the longest fingernails is held by Lee Redmond, whose nails measured over 8.65 meters (28 feet) in total."
+                }, {
+                    user: "What is the national bird of India?",
+                    bot: "The national bird of India is the Indian Peafowl (Peacock)."
+                }, {
+                    user: "What is the psychological term for the tendency to conform to the opinions of a group?",
+                    bot: "This is known as groupthink."
+                }, {
+                    user: "What country is known for its fjords?",
+                    bot: "Norway is famous for its fjords."
+                }, {
+                    user: "What is the official language of Egypt?",
+                    bot: "The official language of Egypt is Arabic."
+                }, {
+                    user: "What is the capital of Italy?",
+                    bot: "The capital of Italy is Rome."
+                }, {
+                    user: "What is the significance of the year 1914 in history?",
+                    bot: "1914 marks the beginning of World War I."
+                }, {
+                    user: "What is the world record for the longest time spent in a plank position?",
+                    bot: "The world record for the longest plank is 8 hours, 15 minutes, and 15 seconds."
+                }, {
+                    user: "What is the national currency of India?",
+                    bot: "The national currency of India is the Indian Rupee (INR)."
+                }, {
+                    user: "What is the psychological concept of the bystander effect?",
+                    bot: "The bystander effect is a social psychological phenomenon where individuals are less likely to help a victim when other people are present."
+                }, {
+                    user: "What country is known for the Great Wall?",
+                    bot: "China is known for the Great Wall."
+                }, {
+                    user: "What is the official language of Switzerland?",
+                    bot: "Switzerland has four official languages: German, French, Italian, and Romansh."
+                }, {
+                    user: "What is the capital of Germany?",
+                    bot: "The capital of Germany is Berlin."
+                }, {
+                    user: "What is the significance of the year 1963 in American history?",
+                    bot: "1963 is known for the assassination of President John F. Kennedy."
+                }, {
+                    user: "What is the world record for the fastest 100 meters sprint?",
+                    bot: "The world record for the fastest 100 meters is 9.58 seconds, set by Usain Bolt in 2009."
+                }, {
+                    user: "What is the national dish of India?",
+                    bot: "Biryani is often considered a national dish of India."
+                }, {
+                    user: "What is the psychological term for the fear of public speaking?",
+                    bot: "The fear of public speaking is known as glossophobia."
+                }, {
+                    user: "What country is famous for its pyramids?",
+                    bot: "Egypt is famous for its pyramids."
+                }, {
+                    user: "What is the official language of Canada?",
+                    bot: "Canada has two official languages: English and French."
+                }, {
+                    user: "What is the capital of Russia?",
+                    bot: "The capital of Russia is Moscow."
+                }, {
+                    user: "What is the significance of the year 1986 in history?",
+                    bot: "1986 is known for the Chernobyl disaster, one of the worst nuclear accidents in history."
+                }, {
+                    user: "What is the world record for the longest time holding one's breath?",
+                    bot: "The world record for the longest time holding one's breath is 24 minutes and 3 seconds."
+                }, {
+                    user: "What is the national animal of Australia?",
+                    bot: "The national animal of Australia is the kangaroo."
+                }, {
+                    user: "What is the psychological concept of confirmation bias?",
+                    bot: "Confirmation bias is the tendency to search for, interpret, and remember information that confirms one's preexisting beliefs."
+                }, {
+                    user: "What country is known for its maple syrup?",
+                    bot: "Canada is known for its maple syrup."
+                }, {
+                    user: "What is the official language of South Africa?",
+                    bot: "South Africa has 11 official languages, including Zulu, Xhosa, and Afrikaans."
+                }, {
+                    user: "What is the capital of Spain?",
+                    bot: "The capital of Spain is Madrid."
+                }, {
+                    user: "What is the significance of the year 2008 in global finance?",
+                    bot: "2008 is known for the global financial crisis, which led to significant economic downturns worldwide."
+                }, {
+                    user: "What is the world record for the most people dancing simultaneously?",
+                    bot: "The world record for the most people dancing simultaneously is 18,000, set in 2017 in Italy."
+                }, {
+                    user: "What is the national flower of Japan?",
+                    bot: "The national flower of Japan is the cherry blossom (Sakura)."
+                }, {
+                    user: "What is the psychological term for the tendency to overestimate the influence of personality and underestimate situational factors?",
+                    bot: "This is known as the fundamental attribution error."
+                }, {
+                    user: "What country is famous for its tulips?",
+                    bot: "The Netherlands is famous for its tulips."
+                }, {
+                    user: "What is the official language of Argentina?",
+                    bot: "The official language of Argentina is Spanish."
+                }, {
+                    user: "What is the capital of Greece?",
+                    bot: "The capital of Greece is Athens."
+                }, {
+                    user: "What is the significance of the year 1991 in Indian history?",
+                    bot: "1991 marks the economic liberalization in India, leading to significant reforms."
+                }, {
+                    user: "What is the world record for the longest time spent in a hot air balloon?",
+                    bot: "The world record for the longest time spent in a hot air balloon is 49 hours, 5 minutes, and 11 seconds."
+                }, {
+                    user: "What is the national sport of Japan?",
+                    bot: "The national sport of Japan is Sumo wrestling."
+                }, {
+                    user: "What is the psychological concept of the halo effect?",
+                    bot: "The halo effect is the tendency for an impression created in one area to influence opinion in another area."
+                }, {
+                    user: "What country is known for its kangaroos?",
+                    bot: "Australia is known for its kangaroos."
+                }, {
+                    user: "What is the official language of Russia?",
+                    bot: "The official language of Russia is Russian."
+                }, {
+                    user: "What is the capital of Egypt?",
+                    bot: "The capital of Egypt is Cairo."
+                }, {
+                    user: "What is the significance of the year 2011 in global politics?",
+                    bot: "2011 is known for the Arab Spring, a series of anti-government protests across the Arab world."
+                }, {
+                    user: "What is the world record for the most tattoos on a person?",
+                    bot: "The world record for the most tattoos on a person is held by Hollis Cantrell, with over 800 tattoos."
+                }, {
+                    user: "What is the national animal of the United States?",
+                    bot: "The national animal of the United States is the bald eagle."
+                }, {
+                    user: "What is the psychological term for the tendency to remember the first and last items in a list best?",
+                    bot: "This is known as the serial position effect."
+                }, {
+                    user: "What country is famous for its chocolate?",
+                    bot: "Belgium is famous for its chocolate."
+                }, {
+                    user: "What is the official language of Mexico?",
+                    bot: "The official language of Mexico is Spanish."
+                }, {
+                    user: "What is the capital of Thailand?",
+                    bot: "The capital of Thailand is Bangkok."
+                }, {
+                    user: "What is the significance of the year 2020 in global health?",
+                    bot: "2020 is known for the COVID-19 pandemic, which affected millions worldwide."
+                }, {
+                    user: "What is the world record for the most people in a single swimming pool?",
+                    bot: "The world record for the most people in a single swimming pool is 3,971, set in 2014 in Mexico."
+                }, {
+                    user: "What is the national flower of the United States?",
+                    bot: "The national flower of the United States is the rose."
+                }, {
+                    user: "What is the psychological concept of the Dunning-Kruger effect?",
+                    bot: "The Dunning-Kruger effect is a cognitive bias where people with low ability overestimate their competence."
+                }, {
+                    user: "What country is known for its ancient ruins of Machu Picchu?",
+                    bot: "Peru is known for the ancient ruins of Machu Picchu."
+                }, {
+                    user: "What is the official language of Italy?",
+                    bot: "The official language of Italy is Italian."
+                }, {
+                    user: "What is the capital of Sweden?",
+                    bot: "The capital of Sweden is Stockholm."
+                }, {
+                    user: "What is the significance of the year 2016 in sports?",
+                    bot: "2016 is known for the Summer Olympics held in Rio de Janeiro, Brazil."
+                }, {
+                    user: "What is the world record for the longest pizza?",
+                    bot: "The world record for the longest pizza is 1,595.45 meters (5,000 feet), made in Italy in 2017."
+                }, {
+                    user: "What is the national animal of Canada?",
+                    bot: "The national animal of Canada is the beaver."
+                }, {
+                    user: "What is the psychological term for the tendency to favor information that confirms existing beliefs?",
+                    bot: "This is known as confirmation bias."
+                }, {
+                    user: "What country is famous for its wine?",
+                    bot: "France is famous for its wine."
+                }, {
+                    user: "What is the official language of Indonesia?",
+                    bot: "The official language of Indonesia is Indonesian."
+                }, {
+                    user: "What is the capital of Nigeria?",
+                    bot: "The capital of Nigeria is Abuja."
+                }, {
+                    user: "What is the significance of the year 2000 in technology?",
+                    bot: "2000 is known for the Y2K bug, which raised concerns about computer systems failing at the turn of the millennium."
+                }, {
+                    user: "What is the world record for the most people wearing the same costume?",
+                    bot: "The world record for the most people wearing the same costume is 18,000, set in 2019 in Italy."
+                }, {
+                    user: "What is the national flower of the United Kingdom?",
+                    bot: "The national flower of the United Kingdom is the rose."
+                }, {
+                    user: "What is the psychological concept of the mere exposure effect?",
+                    bot: "The mere exposure effect is the phenomenon where people tend to develop a preference for things merely because they are familiar with them."
+                }, {
+                    user: "What country is known for its ancient pyramids?",
+                    bot: "Egypt is known for its ancient pyramids."
+                }, {
+                    user: "What is the official language of Turkey?",
+                    bot: "The official language of Turkey is Turkish."
+                }, {
+                    user: "What is the capital of South Korea?",
+                    bot: "The capital of South Korea is Seoul."
+                }, {
+                    user: "What is the significance of the year 2014 in global politics?",
+                    bot: "2014 is known for the annexation of Crimea by Russia, leading to international tensions."
+                }, {
+                    user: "What is the world record for the most people doing jumping jacks?",
+                    bot: "The world record for the most people doing jumping jacks is 8,000, set in 2016 in the Philippines."
+                }, {
+                    user: "What is the national animal of Scotland?",
+                    bot: "The national animal of Scotland is the unicorn."
+                }, {
+                    user: "What is the psychological term for the tendency to remember emotionally charged events better than neutral events?",
+                    bot: "This is known as the emotional memory effect."
+                }, {
+                    user: "What country is famous for its cheese?",
+                    bot: "Switzerland is famous for its cheese."
+                }, {
+                    user: "What is the official language of Greece?",
+                    bot: "The official language of Greece is Greek."
+                }, {
+                    user: "What is the capital of New Zealand?",
+                    bot: "The capital of New Zealand is Wellington."
+                }, {
+                    user: "What is the significance of the year 1994 in South Africa?",
+                    bot: "1994 marks the end of apartheid and the first democratic elections in South Africa."
+                }, {
+                    user: "What is the world record for the most people singing the same song simultaneously?",
+                    bot: "The world record for the most people singing the same song simultaneously is 700,000, set in 2013 in Italy."
+                }, {
+                    user: "What is the national flower of France?",
+                    bot: "The national flower of France is the lily."
+                }, {
+                    user: "What is the psychological concept of the spotlight effect?",
+                    bot: "The spotlight effect is the tendency to overestimate how much others notice our appearance or behavior."
+                }, {
+                    user: "What country is known for its sushi?",
+                    bot: "Japan is known for its sushi."
+                }, {
+                    user: "What is the fastest land animal?",
+                    bot: "The cheetah is the fastest land animal, capable of reaching speeds up to 75 mph (120 km/h)."
+                }, {
+                    user: "What is the largest mammal in the world?",
+                    bot: "The blue whale is the largest mammal, reaching lengths of up to 100 feet (30 meters)."
+                }, {
+                    user: "What animal is known as the king of the jungle?",
+                    bot: "The lion is often referred to as the king of the jungle."
+                }, {
+                    user: "What is the only mammal capable of true flight?",
+                    bot: "Bats are the only mammals capable of true flight."
+                }, {
+                    user: "What is the lifespan of an elephant?",
+                    bot: "Elephants can live up to 60-70 years in the wild."
+                }, {
+                    user: "What is the largest species of penguin?",
+                    bot: "The emperor penguin is the largest species of penguin."
+                }, {
+                    user: "What animal has the longest gestation period?",
+                    bot: "The African elephant has the longest gestation period, lasting about 22 months."
+                }, {
+                    user: "What is the national animal of India?",
+                    bot: "The Bengal tiger is the national animal of India."
+                }, {
+                    user: "What is the most intelligent animal?",
+                    bot: "Dolphins are considered one of the most intelligent animals."
+                }, {
+                    user: "What is the largest species of bear?",
+                    bot: "The polar bear is the largest species of bear."
+                }, {
+                    user: "What is the capital of Himachal Pradesh?",
+                    bot: "The capital of Himachal Pradesh is Shimla."
+                }, {
+                    user: "What is the famous festival celebrated in Himachal Pradesh?",
+                    bot: "The Kullu Dussehra is a famous festival celebrated in Himachal Pradesh."
+                }, {
+                    user: "What is the main language spoken in Himachal Pradesh?",
+                    bot: "Hindi is the main language spoken in Himachal Pradesh, along with various local dialects."
+                }, {
+                    user: "What is the famous hill station in Himachal Pradesh known for its beauty?",
+                    bot: "Manali is a famous hill station in Himachal Pradesh known for its scenic beauty."
+                }, {
+                    user: "What is the traditional dress of Himachal Pradesh?",
+                    bot: "The traditional dress includes the 'chola' for men and 'ghagra' for women."
+                }, {
+                    user: "What is the famous apple variety grown in Himachal Pradesh?",
+                    bot: "The 'Royal Delicious' apple is a famous variety grown in Himachal Pradesh."
+                }, {
+                    user: "What is the main source of income for people in Himachal Pradesh?",
+                    bot: "Agriculture and tourism are the main sources of income for people in Himachal Pradesh."
+                }, {
+                    user: "What is the famous temple located in Himachal Pradesh?",
+                    bot: "The Jakhoo Temple, dedicated to Lord Hanuman, is a famous temple in Shimla."
+                }, {
+                    user: "What is the famous dance form of Himachal Pradesh?",
+                    bot: "The 'Nati' is a traditional dance form of Himachal Pradesh."
+                }, {
+                    user: "What is the significance of the Beas River in Himachal Pradesh?",
+                    bot: "The Beas River is a major river in Himachal Pradesh, providing water for irrigation and hydroelectric power."
+                }, {
+                    user: "What is the Bengali language primarily spoken in?",
+                    bot: "Bengali is primarily spoken in the Indian state of West Bengal and Bangladesh."
+                }, {
+                    user: "What script is used to write the Bengali language?",
+                    bot: "The Bengali script is used to write the Bengali language."
+                }, {
+                    user: "What is the famous festival celebrated by Bengali people?",
+                    bot: "Durga Puja is the most famous festival celebrated by Bengali people."
+                }, {
+                    user: "What is the literary significance of Rabindranath Tagore in Bengali culture?",
+                    bot: "Rabindranath Tagore was the first non-European to win the Nobel Prize in Literature in 1913."
+                }, {
+                    user: "What is the traditional dress for Bengali women?",
+                    bot: "The traditional dress for Bengali women is the saree, often in white and red."
+                }, {
+                    user: "What is the famous sweet dish from Bengal?",
+                    bot: "Rasgulla and Sandesh are famous sweet dishes from Bengal."
+                }, {
+                    user: "What is the primary religion in West Bengal?",
+                    bot: "Hinduism is the primary religion in West Bengal."
+                }, {
+                    user: "What is the significance of the Sundarbans in Bengal?",
+                    bot: "The Sundarbans is a UNESCO World Heritage Site and home to the Royal Bengal Tiger."
+                }, {
+                    user: "What is the most popular sport in Bengal?",
+                    bot: "Cricket is the most popular sport in Bengal."
+                }, {
+                    user: "What is the capital of West Bengal?",
+                    bot: "The capital of West Bengal is Kolkata."
+                }, {
+                    user: "What is a common greeting in Bengali?",
+                    bot: "The common greeting in Bengali is 'Nomoshkar' or 'Shubho Noboborsho' during the New Year."
+                }, {
+                    user: "What is the largest animal on Earth?",
+                    bot: "The blue whale is the largest animal on Earth."
+                }, {
+                    user: "What is the only mammal capable of true flight?",
+                    bot: "Bats are the only mammals capable of true flight."
+                }, {
+                    user: "What is the fastest marine animal?",
+                    bot: "The black marlin is considered the fastest marine animal."
+                }, {
+                    user: "What animal is known for its ability to change color?",
+                    bot: "The chameleon is known for its ability to change color."
+                }, {
+                    user: "What is the largest land animal?",
+                    bot: "The African elephant is the largest land animal."
+                }, {
+                    user: "What is the average lifespan of a house cat?",
+                    bot: "The average lifespan of a house cat is around 15 years."
+                }, {
+                    user: "What is the most intelligent bird?",
+                    bot: "The African grey parrot is considered one of the most intelligent birds."
+                }, {
+                    user: "What is the largest species of shark?",
+                    bot: "The whale shark is the largest species of shark."
+                }, {
+                    user: "What is the only bird that can fly backward?",
+                    bot: "The hummingbird is the only bird that can fly backward."
+                }, {
+                    user: "What is the primary diet of a panda?",
+                    bot: "Pandas primarily eat bamboo."
+                }, {
+                    user: "What is the most common pet in the world?",
+                    bot: "Dogs are considered the most common pet in the world."
+                }, {
+                    user: "What is the capital of Himachal Pradesh?",
+                    bot: "The capital of Himachal Pradesh is Shimla."
+                }, {
+                    user: "What is the famous festival celebrated in Himachal Pradesh?",
+                    bot: "The Kullu Dussehra is a famous festival celebrated in Himachal Pradesh."
+                }, {
+                    user: "What is the main language spoken in Himachal Pradesh?",
+                    bot: "Hindi is the main language spoken in Himachal Pradesh, along with various local dialects."
+                }, {
+                    user: "What is the famous hill station in Himachal Pradesh known for its beauty?",
+                    bot: "Manali is a famous hill station in Himachal Pradesh known for its scenic beauty."
+                }, {
+                    user: "What is the traditional dress of Himachal Pradesh?",
+                    bot: "The traditional dress includes the 'chola' for men and 'ghagra' for women."
+                }, {
+                    user: "What is the famous apple variety grown in Himachal Pradesh?",
+                    bot: "The 'Royal Delicious' apple is a famous variety grown in Himachal Pradesh."
+                }, {
+                    user: "What is the main source of income for people in Himachal Pradesh?",
+                    bot: "Agriculture and tourism are the main sources of income for people in Himachal Pradesh."
+                }, {
+                    user: "What is the famous temple located in Himachal Pradesh?",
+                    bot: "The Jakhoo Temple, dedicated to Lord Hanuman, is a famous temple in Shimla."
+                }, {
+                    user: "What is the famous dance form of Himachal Pradesh?",
+                    bot: "The 'Nati' is a traditional dance form of Himachal Pradesh."
+                }, {
+                    user: "What is the significance of the Beas River in Himachal Pradesh?",
+                    bot: "The Beas River is a major river in Himachal Pradesh, providing water for irrigation and hydroelectric power."
+                }, {
+                    user: "What is the Bengali language primarily spoken in?",
+                    bot: "Bengali is primarily spoken in the Indian state of West Bengal and Bangladesh."
+                }, {
+                    user: "What script is used to write the Bengali language?",
+                    bot: "The Bengali script is used to write the Bengali language."
+                }, {
+                    user: "What is the famous festival celebrated by Bengali people?",
+                    bot: "Durga Puja is the most famous festival celebrated by Bengali people."
+                }, {
+                    user: "What is the literary significance of Rabindranath Tagore in Bengali culture?",
+                    bot: "Rabindranath Tagore was the first non-European to win the Nobel Prize in Literature in 1913."
+                }, {
+                    user: "What is the traditional dress for Bengali women?",
+                    bot: "The traditional dress for Bengali women is the saree, often in white and red."
+                }, {
+                    user: "What is the famous sweet dish from Bengal?",
+                    bot: "Rasgulla and Sandesh are famous sweet dishes from Bengal."
+                }, {
+                    user: "What is the primary religion in West Bengal?",
+                    bot: "Hinduism is the primary religion in West Bengal."
+                }, {
+                    user: "What is the significance of the Sundarbans in Bengal?",
+                    bot: "The Sundarbans is a UNESCO World Heritage Site and home to the Royal Bengal Tiger."
+                }, {
+                    user: "What is the most popular sport in Bengal?",
+                    bot: "Cricket is the most popular sport in Bengal."
+                }, {
+                    user: "What is the capital of West Bengal?",
+                    bot: "The capital of West Bengal is Kolkata."
+                }, {
+                    user: "What is a common greeting in Bengali?",
+                    bot: "The common greeting in Bengali is 'Nomoshkar' or 'Shubho Noboborsho' during the New Year."
+                }, {
+                    user: "What is the largest animal on Earth?",
+                    bot: "The blue whale is the largest animal on Earth."
+                }, {
+                    user: "What is the only mammal capable of true flight?",
+                    bot: "Bats are the only mammals capable of true flight."
+                }, {
+                    user: "What is the fastest marine animal?",
+                    bot: "The black marlin is considered the fastest marine animal."
+                }, {
+                    user: "What animal is known for its ability to change color?",
+                    bot: "The chameleon is known for its ability to change color."
+                }, {
+                    user: "What is the largest land animal?",
+                    bot: "The African elephant is the largest land animal."
+                }, {
+                    user: "What is the average lifespan of a house cat?",
+                    bot: "The average lifespan of a house cat is around 15 years."
+                }, {
+                    user: "What is the most intelligent bird?",
+                    bot: "The African grey parrot is considered one of the most intelligent birds."
+                }, {
+                    user: "What is the largest species of shark?",
+                    bot: "The whale shark is the largest species of shark."
+                }, {
+                    user: "What is the only bird that can fly backward?",
+                    bot: "The hummingbird is the only bird that can fly backward."
+                }, {
+                    user: "What is the primary diet of a panda?",
+                    bot: "Pandas primarily eat bamboo."
+                }, {
+                    user: "What is the most common pet in the world?",
+                    bot: "Dogs are considered the most common pet in the world."
+                }, {
+                    user: "What is the average age for girls to start puberty?",
+                    bot: "Girls typically start puberty between the ages of 8 and 13."
+                }, {
+                    user: "What is the importance of education for girls?",
+                    bot: "Education empowers girls, providing them with knowledge and skills for better opportunities."
+                }, {
+                    user: "What is the leading cause of death among children worldwide?",
+                    bot: "Pneumonia is one of the leading causes of death among children under five years old."
+                }, {
+                    user: "What is the average height of a 10-year-old girl?",
+                    bot: "The average height of a 10-year-old girl is about 4 feet 6 inches (137 cm)."
+                }, {
+                    user: "What is the most common tree in the world?",
+                    bot: "The oak tree is one of the most common and widespread trees in the world."
+                }, {
+                    user: "What is the role of trees in the ecosystem?",
+                    bot: "Trees provide oxygen, improve air quality, conserve water, preserve soil, and support wildlife."
+                }, {
+                    user: "What is the average lifespan of a tree?",
+                    bot: "The average lifespan of a tree varies by species, but many can live for several decades to hundreds of years."
+                }, {
+                    user: "What is the tallest tree species in the world?",
+                    bot: "The coast redwood (Sequoia sempervirens) is the tallest tree species, reaching heights of over 350 feet (107 meters)."
+                }, {
+                    user: "What is the importance of nature for mental health?",
+                    bot: "Spending time in nature can reduce stress, anxiety, and depression, promoting overall mental well-being."
+                }, {
+                    user: "What is the largest planet in our solar system?",
+                    bot: "Jupiter is the largest planet in our solar system."
+                }, {
+                    user: "What is the average number of trees cut down each year?",
+                    bot: "Approximately 15 billion trees are cut down each year globally."
+                }, {
+                    user: "What is the primary function of leaves on a tree?",
+                    bot: "Leaves are responsible for photosynthesis, converting sunlight into energy for the tree."
+                }, {
+                    user: "What is the significance of the Amazon rainforest?",
+                    bot: "The Amazon rainforest is vital for biodiversity, carbon storage, and regulating the Earth's climate."
+                }, {
+                    user: "What is the average age for children to start school?",
+                    bot: "Children typically start school around the age of 5."
+                }, {
+                    user: "What is the most common tree in North America?",
+                    bot: "The red maple is one of the most common trees in North America."
+                }, {
+                    user: "What is the average height of a 5-year-old child?",
+                    bot: "The average height of a 5-year-old child is about 3 feet 7 inches (110 cm)."
+                }, {
+                    user: "What is the primary source of energy for the Earth?",
+                    bot: "The primary source of energy for the Earth is the Sun."
+                }, {
+                    user: "What is the closest planet to the Sun?",
+                    bot: "Mercury is the closest planet to the Sun."
+                }, {
+                    user: "What is the average number of hours children sleep?",
+                    bot: "Children aged 6-13 typically need about 9-11 hours of sleep per night."
+                }, {
+                    user: "What is the largest living tree in the world?",
+                    bot: "The General Sherman Tree, a giant sequoia, is the largest living tree by volume."
+                }, {
+                    user: "What is the significance of trees in urban areas?",
+                    bot: "Trees in urban areas provide shade, improve air quality, and enhance the aesthetic value of the environment."
+                }, {
+                    user: "What is the average age for girls to start menstruating?",
+                    bot: "Girls typically start menstruating between the ages of 9 and 16."
+                }, {
+                    user: "What is the most common childhood illness?",
+                    bot: "Common colds are the most frequent childhood illness."
+                }, {
+                    user: "What is the role of trees in combating climate change?",
+                    bot: "Trees absorb carbon dioxide, helping to mitigate climate change by reducing greenhouse gases."
+                }, {
+                    user: "What is the average number of children in a family?",
+                    bot: "The average number of children in a family varies by country, but globally it is around 2-3 children."
+                }, {
+                    user: "What is the largest desert in the world?",
+                    bot: "The Antarctic Desert is the largest desert in the world."
+                }, {
+                    user: "What is the average lifespan of a child in developed countries?",
+                    bot: "In developed countries, the average lifespan of a child is around 80 years."
+                }, {
+                    user: "What is the most abundant tree species in the world?",
+                    bot: "The pine tree is one of the most abundant tree species globally."
+                }, {
+                    user: "What is the primary function of roots in a tree?",
+                    bot: "Roots anchor the tree and absorb water and nutrients from the soil."
+                }, {
+                    user: "What is the average number of words a child knows by age 2?",
+                    bot: "By age 2, a child typically knows about 200-300 words."
+                }, {
+                    user: "What is the largest moon in our solar system?",
+                    bot: "Ganymede, a moon of Jupiter, is the largest moon in our solar system."
+                }, {
+                    user: "What is the average height of a 12-year-old girl?",
+                    bot: "The average height of a 12-year-old girl is about 5 feet (152 cm)."
+                }, {
+                    user: "What is the most common tree in Europe?",
+                    bot: "The European beech is one of the most common trees in Europe."
+                }, {
+                    user: "What is the average age for children to learn to read?",
+                    bot: "Children typically learn to read between the ages of 5 and 7."
+                }, {
+                    user: "What is the significance of the Great Barrier Reef?",
+                    bot: "The Great Barrier Reef is the largest coral reef system in the world and is vital for marine biodiversity."
+                }, {
+                    user: "What is the average number of trees in a forest?",
+                    bot: "The number of trees in a forest can vary widely, but a healthy forest can have thousands of trees per acre."
+                }, {
+                    user: "What is the average age for girls to start using makeup?",
+                    bot: "Girls typically start using makeup between the ages of 12 and 16."
+                }, {
+                    user: "What is the most common type of tree in tropical rainforests?",
+                    bot: "Broadleaf evergreen trees are the most common type in tropical rainforests."
+                }, {
+                    user: "What is the average number of children in the world?",
+                    bot: "As of recent estimates, there are approximately 2 billion children under the age of 15 in the world."
+                }, {
+                    user: "What is the primary function of flowers on a tree?",
+                    bot: "Flowers are responsible for reproduction, attracting pollinators to produce seeds."
+                }, {
+                    user: "What is the average age for children to start walking?",
+                    bot: "Most children start walking between 9 and 15 months of age."
+                }, {
+                    user: "What is the largest living organism on Earth?",
+                    bot: "The largest living organism is the Armillaria ostoyae fungus, covering over 2,385 acres in Oregon."
+                }, {
+                    user: "What is the average number of leaves on a tree?",
+                    bot: "A mature tree can have thousands to millions of leaves, depending on the species."
+                }, {
+                    user: "What is the average age for girls to start dating?",
+                    bot: "Girls typically start dating around the ages of 15 to 17."
+                }, {
+                    user: "What is the most common tree in Asia?",
+                    bot: "The rubber tree is one of the most common trees in Asia."
+                }, {
+                    user: "What is the average age for children to start school?",
+                    bot: "Children typically start school around the age of 5."
+                }, {
+                    user: "What is the significance of the Milky Way galaxy?",
+                    bot: "The Milky Way galaxy is home to our solar system and contains billions of stars."
+                }, {
+                    user: "What is the average height of a 3-year-old child?",
+                    bot: "The average height of a 3-year-old child is about 3 feet (91 cm)."
+                }, {
+                    user: "What is the most common type of tree in North America?",
+                    bot: "The red maple is one of the most common trees in North America."
+                }, {
+                    user: "What is the average number of hours children sleep?",
+                    bot: "Children aged 6-13 typically need about 9-11 hours of sleep per night."
+                }, {
+                    user: "What is the primary function of bark on a tree?",
+                    bot: "Bark protects the tree from physical damage and disease."
+                }, {
+                    user: "What is the average age for girls to start menstruating?",
+                    bot: "Girls typically start menstruating between the ages of 9 and 16."
+                }, {
+                    user: "What is the most common childhood illness?",
+                    bot: "Common colds are the most frequent childhood illness."
+                }, {
+                    user: "What is the role of trees in combating climate change?",
+                    bot: "Trees absorb carbon dioxide, helping to mitigate climate change by reducing greenhouse gases."
+                }, {
+                    user: "What is the average number of children in a family?",
+                    bot: "The average number of children in a family varies by country, but globally it is around 2-3 children."
+                }, {
+                    user: "What is the largest desert in the world?",
+                    bot: "The Antarctic Desert is the largest desert in the world."
+                }, {
+                    user: "What is the average lifespan of a child in developed countries?",
+                    bot: "In developed countries, the average lifespan of a child is around 80 years."
+                }, {
+                    user: "What is the most abundant tree species in the world?",
+                    bot: "The pine tree is one of the most abundant tree species globally."
+                }, {
+                    user: "What is the primary function of leaves on a tree?",
+                    bot: "Leaves are responsible for photosynthesis, converting sunlight into energy for the tree."
+                }, {
+                    user: "What is the average number of words a child knows by age 2?",
+                    bot: "By age 2, a child typically knows about 200-300 words."
+                }, {
+                    user: "What is the closest planet to the Sun?",
+                    bot: "Mercury is the closest planet to the Sun."
+                }, {
+                    user: "What is the average height of a 10-year-old girl?",
+                    bot: "The average height of a 10-year-old girl is about 4 feet 6 inches (137 cm)."
+                }, {
+                    user: "What is the tallest tree species in the world?",
+                    bot: "The coast redwood (Sequoia sempervirens) is the tallest tree species, reaching heights of over 350 feet (107 meters)."
+                }, {
+                    user: "What is the average age for children to learn to read?",
+                    bot: "Children typically learn to read between the ages of 5 and 7."
+                }, {
+                    user: "What is the significance of the Amazon rainforest?",
+                    bot: "The Amazon rainforest is vital for biodiversity, carbon storage, and regulating the Earth's climate."
+                }, {
+                    user: "What is the average number of trees cut down each year?",
+                    bot: "Approximately 15 billion trees are cut down each year globally."
+                }, {
+                    user: "What is the average age for girls to start using makeup?",
+                    bot: "Girls typically start using makeup between the ages of 12 and 16."
+                }, {
+                    user: "What is the primary function of flowers on a tree?",
+                    bot: "Flowers are responsible for reproduction, attracting pollinators to produce seeds."
+                }, {
+                    user: "What is the average age for children to start walking?",
+                    bot: "Most children start walking between 9 and 15 months of age."
+                }, {
+                    user: "What is the largest living organism on Earth?",
+                    bot: "The largest living organism is the Armillaria ostoyae fungus, covering over 2,385 acres in Oregon."
+                }, {
+                    user: "What is the average number of leaves on a tree?",
+                    bot: "A mature tree can have thousands to millions of leaves, depending on the species."
+                }, {
+                    user: "What is the average age for girls to start dating?",
+                    bot: "Girls typically start dating around the ages of 15 to 17."
+                }, {
+                    user: "What is the most common tree in Asia?",
+                    bot: "The rubber tree is one of the most common trees in Asia."
+                }, {
+                    user: "What is the average age for children to start school?",
+                    bot: "Children typically start school around the age of 5."
+                }, {
+                    user: "What is the significance of the Milky Way galaxy?",
+                    bot: "The Milky Way galaxy is home to our solar system and contains billions of stars."
+                }, {
+                    user: "What is the average height of a 3-year-old child?",
+                    bot: "The average height of a 3-year-old child is about 3 feet (91 cm)."
+                }, {
+                    user: "What is the most common tree in Europe?",
+                    bot: "The European beech is one of the most common trees in Europe."
+                }, {
+                    user: "What is the average age for children to start talking?",
+                    bot: "Most children start talking around 12 months of age."
+                }, {
+                    user: "What is the primary function of bark on a tree?",
+                    bot: "Bark protects the tree from physical damage and disease."
+                }, {
+                    user: "What is the average number of children in the world?",
+                    bot: "As of recent estimates, there are approximately 2 billion children under the age of 15 in the world."
+                }, {
+                    user: "What is the average lifespan of a tree?",
+                    bot: "The average lifespan of a tree varies by species, but many can live for several decades to hundreds of years."
+                }, {
+                    user: "What is the average age for girls to start menstruating?",
+                    bot: "Girls typically start menstruating between the ages of 9 and 16."
+                }, {
+                    user: "What is the most common childhood illness?",
+                    bot: "Common colds are the most frequent childhood illness."
+                }, {
+                    user: "What is the role of trees in combating climate change?",
+                    bot: "Trees absorb carbon dioxide, helping to mitigate climate change by reducing greenhouse gases."
+                }, {
+                    user: "What is the average number of children in a family?",
+                    bot: "The average number of children in a family varies by country, but globally it is around 2-3 children."
+                }, {
+                    user: "What is the largest desert in the world?",
+                    bot: "The Antarctic Desert is the largest desert in the world."
+                }, {
+                    user: "What is the average lifespan of a child in developed countries?",
+                    bot: "In developed countries, the average lifespan of a child is around 80 years."
+                }, {
+                    user: "What is the most abundant tree species in the world?",
+                    bot: "The pine tree is one of the most abundant tree species globally."
+                }, {
+                    user: "What is the primary function of leaves on a tree?",
+                    bot: "Leaves are responsible for photosynthesis, converting sunlight into energy for the tree."
+                }, {
+                    user: "What is the average number of words a child knows by age 2?",
+                    bot: "By age 2, a child typically knows about 200-300 words."
+                }, {
+                    user: "What is the closest planet to the Sun?",
+                    bot: "Mercury is the closest planet to the Sun."
+                }, {
+                    user: "What is the average height of a 10-year-old girl?",
+                    bot: "The average height of a 10-year-old girl is about 4 feet 6 inches (137 cm)."
+                }, {
+                    user: "What is the tallest tree species in the world?",
+                    bot: "The coast redwood (Sequoia sempervirens) is the tallest tree species, reaching heights of over 350 feet (107 meters)."
+                }, {
+                    user: "What is the average age for children to learn to read?",
+                    bot: "Children typically learn to read between the ages of 5 and 7."
+                }, {
+                    user: "What is the significance of the Amazon rainforest?",
+                    bot: "The Amazon rainforest is vital for biodiversity, carbon storage, and regulating the Earth's climate."
+                }, {
+                    user: "What is the average number of trees cut down each year?",
+                    bot: "Approximately 15 billion trees are cut down each year globally."
+                }, {
+                    user: "What is the average age for girls to start using makeup?",
+                    bot: "Girls typically start using makeup between the ages of 12 and 16."
+                }, {
+                    user: "What is the primary function of flowers on a tree?",
+                    bot: "Flowers are responsible for reproduction, attracting pollinators to produce seeds."
+                }, {
+                    user: "What is the average age for children to start walking?",
+                    bot: "Most children start walking between 9 and 15 months of age."
+                }, {
+                    user: "What is the largest living organism on Earth?",
+                    bot: "The largest living organism is the Armillaria ostoyae fungus, covering over 2,385 acres in Oregon."
+                }, {
+                    user: "What is the average number of leaves on a tree?",
+                    bot: "A mature tree can have thousands to millions of leaves, depending on the species."
+                }, {
+                    user: "What is the average age for girls to start dating?",
+                    bot: "Girls typically start dating around the ages of 15 to 17."
+                },
+
+
+
+
+            ];
+
+            // Function to add message to chat window
+            function addMessage(text, sender) {
+                const messageElem = document.createElement('div');
+                messageElem.classList.add('message', sender);
+                messageElem.textContent = text;
+                messagesDiv.appendChild(messageElem);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
+            // Compute cosine similarity between two embeddings
+            function cosineSimilarity(vecA, vecB) {
+                const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+                const magA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+                const magB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+                if (magA === 0 || magB === 0) return 0;
+                return dotProduct / (magA * magB);
+            }
+
+            // Find best response
+            async function getBotResponse(input) {
+                if (!model) return "Sorry, the model is not loaded yet.";
+
+                const inputEmbed = await model.embed([input]);
+                const inputVec = Array.from(inputEmbed.arraySync()[0]);
+
+                let bestScore = -1;
+                let bestResponse = "Sorry, I don't understand that.";
+
+                for (let i = 0; i < conversationPairs.length; i++) {
+                    const pairEmbed = embeddings[i];
+                    const score = cosineSimilarity(inputVec, pairEmbed);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestResponse = conversationPairs[i].bot;
+                    }
+                }
+                inputEmbed.dispose();
+                return bestResponse;
+            }
+
+            async function prepareEmbeddings() {
+                const texts = conversationPairs.map(pair => pair.user);
+                const embedTensor = await model.embed(texts);
+                embeddings = await embedTensor.array();
+                embedTensor.dispose();
+            }
+
+            // Load the Universal Sentence Encoder model
+            async function loadModel() {
+                loadingText.hidden = false;
+                model = await use.load();
+                await prepareEmbeddings();
+                loadingText.hidden = true;
+            }
+
+            // Initialize
+            loadModel();
+
+            // Form submit handler
+            inputForm.addEventListener('submit', async(e) => {
+                e.preventDefault();
+                const userInput = inputField.value.trim();
+                if (!userInput) return;
+
+                addMessage(userInput, 'user');
+                inputField.value = '';
+                sendBtn.disabled = true;
+
+                const botReply = await getBotResponse(userInput.toLowerCase());
+                addMessage(botReply, 'bot');
+
+                sendBtn.disabled = false;
+                inputField.focus();
+            });
+        })();
+    </script>
+</body>
+
+</html>
